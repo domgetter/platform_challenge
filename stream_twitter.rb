@@ -27,16 +27,43 @@ def sign_request(req, params)
   access_token.sign!(req)
 end
 
+# rotating hashtags
+$HASHTAGS = 7.times.map { Hash.new(0) }
+$CURRENT_HASH_INDEX = 0
+$TIME_START = Time.now.to_i
+$TIME_SHOW = Time.now.to_i
+
+
 def json_parse(data)
   parsed_data = JSON.parse(data)
   # ap parsed_data
   if parsed_data["text"]
-    ap parsed_data["text"]
-    # ap parsed_data["hashtags"]
-    # ap parsed_data
-    # /\b#\w\w+/.match(parsed_data["text"])
-  else
-    ap parsed_data
+    # http://stackoverflow.com/questions/12102746/regex-to-match-hashtags-in-a-sentence-using-ruby
+    hashtags = parsed_data["text"].scan(/(?:\s|^)(?:#(?!(?:\d+|\w+?_|_\w+?)(?:\s|$)))(\w+)(?=\s|$)/i).flatten
+    if hashtags.any?
+      hashtags.each do |match|
+        $HASHTAGS[$CURRENT_HASH_INDEX][match.downcase] += 1
+
+        if Time.now.to_i > $TIME_START + 10
+          $CURRENT_HASH_INDEX = ($CURRENT_HASH_INDEX + 1) % $HASHTAGS.length
+          ap "----------------- current index = #{$CURRENT_HASH_INDEX}"
+          $HASHTAGS[$CURRENT_HASH_INDEX].clear
+          $TIME_START = Time.now.to_i
+        end
+
+        if Time.now.to_i > $TIME_SHOW + 5
+
+          all_hash = Hash.new(0)
+          $HASHTAGS.each do |hashtag|
+            hashtag.each do |key, value|
+              all_hash[key] += value
+            end
+          end
+          ap all_hash.sort_by {|key, value| value }.reverse[1..10]
+          $TIME_SHOW = Time.now.to_i
+        end
+      end
+    end
   end
 end
 
@@ -44,10 +71,10 @@ end
 # https://apps.twitter.com/
 
 params = {
-  :consumer_key       => 'CHANGE consumer_key',
-  :consumer_secret    => 'CHANGE consumer_secret',
-  :access_token        => 'CHANGE access_token',
-  :access_token_secret => 'CHANGE access_token_secret'
+  :consumer_key       => ENV["TWITTER_CONSUMER_KEY"],
+  :consumer_secret    => ENV["TWITTER_CONSUMER_SECRET"],
+  :access_token        => ENV["TWITTER_ACCESS_TOKEN"],
+  :access_token_secret => ENV["TWITTER_ACCESS_TOKEN_SECRET"]
 }
 
 site = "https://stream.twitter.com/1.1/statuses/sample.json"
@@ -75,44 +102,58 @@ sign_request(request, params)
 # ab
 # ab len = 1
 
+begin
 
-http_object.request request do |response|
-  prev = nil
-  response.read_body do |chunk|
-    parts = chunk.split("\r\n")
-    puts parts.count
-    if parts.length == 1
-      if prev != nil
-        prev += parts[0]
-      end
-    elsif parts.length == 2
-      if prev != nil
-        prev += parts[0]
-        json_parse(prev)
-      end
-      prev = parts[1]
-    else
-      parts.each_with_index do |part, index|
-        if index == 0
-          if prev != nil
-            prev += part
-            json_parse(prev)
+  to_parse = nil
+
+  http_object.request request do |response|
+    response.read_body do |chunk|
+      parts = chunk.split("\r\n")
+      # puts parts.count
+      if parts.length == 1
+        if prev != nil
+          prev += parts[0]
+        end
+      elsif parts.length == 2
+        if prev != nil
+          prev += parts[0]
+
+          to_parse = prev
+          json_parse(to_parse)
+        end
+        prev = parts[1]
+      else
+        parts.each_with_index do |part, index|
+          if index == 0
+            if prev != nil
+              prev += part
+
+              to_parse = prev
+              json_parse(to_parse)
+            end
+          elsif index == parts.length - 1
+            prev = part
+          else
+            to_parse = part
+            json_parse(to_parse)
           end
-        elsif index == parts.length - 1
-          prev = part
-        else
-          json_parse(part)
         end
       end
+      # the first time parts[0] is invalid
+      # always save parts[-1] for the next go round
+
+      # parse everything in between
+      # prev += parts[0]
+
+
     end
-    # the first time parts[0] is invalid
-    # always save parts[-1] for the next go round
-
-    # parse everything in between
-    # prev += parts[0]
-
   end
+
+rescue JSON::ParserError => e
+  ap e
+  ap to_parse
 end
+
 
 http_object.finish
 
