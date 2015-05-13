@@ -6,6 +6,7 @@ require 'net/http'
 require 'http_logger'
 require 'pry'
 require 'byebug'
+require 'webrick'
 
 # Thread.current["shutdown"] = count
 
@@ -26,6 +27,7 @@ class ThreadManager
 
   def quit_on_quit
     puts "U sure kille me guud!"
+    @threads.each { |t| t[:shutdown] = true }
 
     # shutdown all the services
     # then exit
@@ -49,10 +51,34 @@ class ThreadManager
 end
 
 class HttpServer
-  def initialize
+  def initialize(stream_twitter)
+    @stream_twitter = stream_twitter
+    @server = nil
   end
 
   def start
+    @server = WEBrick::HTTPServer.new :Port => 8000
+    @server.mount_proc '/' do |request, response|
+      response.set_redirect WEBrick::HTTPStatus[301], "/top10"
+    end
+
+    @server.mount_proc '/top10' do |request, response|
+      response.status = 200
+      response['Content-Type'] = 'application/json'
+      response.body = @stream_twitter.top_ten
+    end
+
+    @server.mount_proc '/debug' do |request, response|
+      response.status = 200
+      response['Content-Type'] = 'application/json'
+      response.body = @stream_twitter.debug
+    end
+
+    @server.start
+  end
+
+  def shutdown
+    @server.shutdown if @server
   end
 end
 
@@ -63,6 +89,31 @@ class StreamTwitter
     @current_hashtag_index = 0
     @time_start = nil
     @time_show = nil
+    @mutex = Mutex.new
+  end
+
+  def top_ten
+    data = nil
+    all_hash = Hash.new(0)
+    @mutex.synchronize do
+      @hashtags.each do |hashtag|
+        hashtag.each do |key, value|
+          all_hash[key] += value
+        end
+      end
+      data = all_hash.sort_by {|key, value| value }.reverse[1..10]
+    end
+    data.map {|d| { hashtag: d[0], count: d[1] } }.to_json
+  end
+
+  def debug
+    data = []
+    @mutex.synchronize do
+      @hashtags.each_with_index do |hashtag, index|
+        data << {index => hashtag}
+      end
+    end
+    data.to_json
   end
 
   def json_parse(data)
@@ -72,26 +123,28 @@ class StreamTwitter
       # http://stackoverflow.com/questions/12102746/regex-to-match-hashtags-in-a-sentence-using-ruby
       hashtags = parsed_data["text"].scan(/(?:\s|^)(?:#(?!(?:\d+|\w+?_|_\w+?)(?:\s|$)))(\w+)(?=\s|$)/i).flatten
       if hashtags.any?
-        hashtags.each do |match|
-          @hashtags[@current_hashtag_index][match.downcase] += 1
+        @mutex.synchronize do
+          hashtags.each do |match|
+            @hashtags[@current_hashtag_index][match.downcase] += 1
 
-          if Time.now.to_i > @time_start + 10
-            @current_hashtag_index = (@current_hashtag_index + 1) % @hashtags.length
-            ap "----------------- current index = #{@current_hashtag_index}"
-            @hashtags[@current_hashtag_index].clear
-            @time_start = Time.now.to_i
-          end
-
-          if Time.now.to_i > @time_show + 5
-
-            all_hash = Hash.new(0)
-            @hashtags.each do |hashtag|
-              hashtag.each do |key, value|
-                all_hash[key] += value
-              end
+            if Time.now.to_i > @time_start + 10
+              @current_hashtag_index = (@current_hashtag_index + 1) % @hashtags.length
+              ap "----------------- current index = #{@current_hashtag_index}"
+              @hashtags[@current_hashtag_index].clear
+              @time_start = Time.now.to_i
             end
-            ap all_hash.sort_by {|key, value| value }.reverse[1..10]
-            @time_show = Time.now.to_i
+
+            if Time.now.to_i > @time_show + 5
+
+              all_hash = Hash.new(0)
+              @hashtags.each do |hashtag|
+                hashtag.each do |key, value|
+                  all_hash[key] += value
+                end
+              end
+              ap all_hash.sort_by {|key, value| value }.reverse[1..10]
+              @time_show = Time.now.to_i
+            end
           end
         end
       end
@@ -123,6 +176,10 @@ class StreamTwitter
     @time_show = Time.now.to_i
   end
 
+  def shutdown
+    @shutdown = true
+  end
+
   def start
     HttpLogger.colorize = true
     HttpLogger.level = :debug
@@ -141,12 +198,12 @@ class StreamTwitter
 
     uri = URI.parse(site)
 
-    http_object = Net::HTTP.new(uri.host, uri.port)
+    @http_object = Net::HTTP.new(uri.host, uri.port)
 
-    # http_object.set_debug_output $stderr
-    http_object.use_ssl = true
-    http_object.verify_mode = OpenSSL::SSL::VERIFY_NONE
-    http_object.read_timeout = 30
+    # @http_object.set_debug_output $stderr
+    @http_object.use_ssl = true
+    @http_object.verify_mode = OpenSSL::SSL::VERIFY_NONE
+    @http_object.read_timeout = 30
 
     request = Net::HTTP::Get.new(site, {})
 
@@ -166,12 +223,16 @@ class StreamTwitter
 
       to_parse = nil
 
-      http_object.request request do |response|
+      @http_object.request request do |response|
         response.read_body do |chunk|
 
           if Thread.current[:hup] == true
             Thread.current[:hup] = false
             reset_hashtags
+          end
+          if @shutdown
+            @http_object.finish
+            break
           end
 
           prev = nil
@@ -209,7 +270,7 @@ class StreamTwitter
         end
       end
 
-      http_object.finish
+      @http_object.finish
 
     rescue JSON::ParserError => e
       ap e
@@ -222,8 +283,8 @@ end
 task :default => :start
 
 task :start do
-  http_server = HttpServer.new
   stream_twitter = StreamTwitter.new
+  http_server = HttpServer.new(stream_twitter)
 
   thread_manager = ThreadManager.new
   thread_manager.add_thread(Thread.new { http_server.start })
