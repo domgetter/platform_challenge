@@ -1,11 +1,14 @@
 source "https://rubygems.org"
 ruby "2.2.1"
 
-gem 'oauth'
-gem 'webrick'
-gem "awesome_print"
-gem "pry"
+gem "oauth"
+gem "webrick"
 
-gem 'tweetstream'
-gem 'http_logger'
-gem 'byebug'
+group :development, :test do
+  gem "awesome_print"
+  gem "pry"
+  gem "byebug"
+  gem "http_logger"
+  gem "rspec"
+  gem "byebug"
+end
