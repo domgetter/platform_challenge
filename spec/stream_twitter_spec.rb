@@ -1,6 +1,6 @@
 require_relative "./spec_helper"
-require_relative "../stream_twitter"
-require_relative "../hashtag_data"
+require_relative "../models/stream_twitter"
+require_relative "../models/hashtag_data"
 
 RSpec.describe StreamTwitter do
   describe "#parse_chunk" do

@@ -1,5 +1,5 @@
 require_relative "./spec_helper"
-require_relative "../http_server"
+require_relative "../models/http_server"
 
 RSpec.describe HttpServer do
   describe "#start" do

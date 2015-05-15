@@ -1,5 +1,5 @@
 require_relative "./spec_helper"
-require_relative "../hashtag_data"
+require_relative "../models/hashtag_data"
 
 RSpec.describe HashtagData do
   describe "#add_hashtag" do

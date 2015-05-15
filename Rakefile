@@ -7,15 +7,14 @@ require "json"
 require "net/http"
 require "http_logger"
 require 'logger'
-require "awesome_print"
-require "pry"
-require "byebug"
+# require "awesome_print"
+# require "pry"
+# require "byebug"
 
-require "logger"
-require_relative "./hashtag_data"
-require_relative "./http_server"
-require_relative "./service_manager"
-require_relative "./stream_twitter"
+require_relative "./models/hashtag_data"
+require_relative "./models/http_server"
+require_relative "./models/service_manager"
+require_relative "./models/stream_twitter"
 
 task :default => :start
 
