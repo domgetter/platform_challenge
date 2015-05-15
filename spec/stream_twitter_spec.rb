@@ -4,39 +4,32 @@ require_relative "../hashtag_data"
 
 RSpec.describe StreamTwitter do
   describe "#parse_chunk" do
-    context "chunk has only one part" do
-      it "ignores it if stream is nil" do
-        hashtag_data = HashtagData.new
-        stream_twitter = StreamTwitter.new(hashtag_data)
+    it "does not try to parse chunk if it doesn't have a delimiter" do
+      hashtag_data = HashtagData.new
+      stream_twitter = StreamTwitter.new(hashtag_data)
+      expect(stream_twitter).to receive(:json_parse).never
 
-        stream_twitter.parse_chunk("123")
-
-        expect(stream_twitter.current_tweet).to be_nil
-      end
+      stream_twitter.parse_chunk("123")
     end
 
-    context "chunk has two parts" do
-      it "calls json_parse twice" do
-        hashtag_data = HashtagData.new
-        stream_twitter = StreamTwitter.new(hashtag_data)
+    it "calls json_parse twice if the chunk has two parts" do
+      hashtag_data = HashtagData.new
+      stream_twitter = StreamTwitter.new(hashtag_data)
 
-        expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").twice
+      expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").twice
 
-        stream_twitter.parse_chunk("}\r\n{\"123\"")
-        stream_twitter.parse_chunk(":\"456\"}\r\n{\"123\"")
-        stream_twitter.parse_chunk(":\"456\"}\r\n{\"123\"")
-      end
+      stream_twitter.parse_chunk("}\r\n{\"123\"")
+      stream_twitter.parse_chunk(":\"456\"}\r\n{\"123\"")
+      stream_twitter.parse_chunk(":\"456\"}\r\n{\"123\"")
     end
 
-    context "chunk has multiple parts" do
-      it "calls json_parse 4 times" do
-        hashtag_data = HashtagData.new
-        stream_twitter = StreamTwitter.new(hashtag_data)
+    it "calls json_parse 4 times when chunk has multiple parts" do
+      hashtag_data = HashtagData.new
+      stream_twitter = StreamTwitter.new(hashtag_data)
 
-        expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").exactly(3).times
+      expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").exactly(3).times
 
-        stream_twitter.parse_chunk("}\r\n{\"123\":\"456\"}\r\n{\"123\":\"456\"}\r\n{\"123\":\"456\"}\r\n{\"123\"")
-      end
+      stream_twitter.parse_chunk("}\r\n{\"123\":\"456\"}\r\n{\"123\":\"456\"}\r\n{\"123\":\"456\"}\r\n{\"123\"")
     end
   end
 
