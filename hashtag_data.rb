@@ -1,4 +1,5 @@
 # encoding: utf-8
+require "json"
 
 class HashtagData
   def initialize
@@ -10,8 +11,8 @@ class HashtagData
     @current_hashtag_index = nil
   end
 
-  def add_hashtag(hashtag)
-    determine_hashtag_index
+  def add_hashtag(hashtag, now = Time.now)
+    determine_hashtag_index(now)
     @mutex.synchronize do
       @hashtags[@current_hashtag_index][hashtag.downcase] += 1
     end
@@ -26,18 +27,6 @@ class HashtagData
     end
   end
 
-  def determine_hashtag_index
-    new_index = Time.now.to_i % 60 / 10
-    @mutex.synchronize do
-      if @current_hashtag_index != new_index
-        # there is a problem if we skip a time because we get no data for 10 seconds
-        # that hashtag won't get cleared
-        @hashtags[new_index].clear
-        @current_hashtag_index = new_index
-      end
-    end
-  end
-
   def top_ten
     data = []
     all_hash = Hash.new(0)
@@ -47,8 +36,9 @@ class HashtagData
           all_hash[key] += value
         end
       end
-      data = all_hash.sort_by {|key, value| value }.reverse[1..10]
+      data = all_hash.sort_by {|key, value| value }.reverse[0..9]
     end
+
     data.map { |d| { hashtag: d[0], count: d[1] } }.to_json
   end
 
@@ -60,5 +50,19 @@ class HashtagData
       end
     end
     data.to_json
+  end
+
+  private
+
+  def determine_hashtag_index(now = Time.now)
+    new_index = now.to_i % 60 / 10
+    @mutex.synchronize do
+      if @current_hashtag_index != new_index
+        # there is a problem if we skip a time because we get no data for 10 seconds
+        # that hashtag won't get cleared
+        @hashtags[new_index].clear
+        @current_hashtag_index = new_index
+      end
+    end
   end
 end

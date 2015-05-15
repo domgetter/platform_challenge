@@ -14,25 +14,6 @@ class StreamTwitter
     self.access_token_secret = ENV["TWITTER_ACCESS_TOKEN_SECRET"]
   end
 
-  def sign_request(req, params)
-    consumer = OAuth::Consumer.new(
-      params.fetch(:consumer_key),
-      params.fetch(:consumer_secret),
-      {
-        :site => "https://stream.twitter.com", :scheme => :header
-      }
-    )
-
-    token_hash = {
-      :oauth_token => params.fetch(:access_token),
-      :oauth_token_secret => params.fetch(:access_token_secret)
-    }
-
-    access_token = OAuth::AccessToken.from_hash(consumer, token_hash)
-
-    access_token.sign!(req)
-  end
-
   class HupException < Exception; end;
 
   def start_http_request
@@ -153,4 +134,25 @@ class StreamTwitter
   private
 
   attr_accessor :current_tweet, :consumer_key, :consumer_secret, :access_token, :access_token_secret
+
+  def sign_request(req, params)
+    consumer = OAuth::Consumer.new(
+      params.fetch(:consumer_key),
+      params.fetch(:consumer_secret),
+      {
+        :site => "https://stream.twitter.com", :scheme => :header
+      }
+    )
+
+    token_hash = {
+      :oauth_token => params.fetch(:access_token),
+      :oauth_token_secret => params.fetch(:access_token_secret)
+    }
+
+    access_token = OAuth::AccessToken.from_hash(consumer, token_hash)
+
+    access_token.sign!(req)
+  end
+
+
 end
