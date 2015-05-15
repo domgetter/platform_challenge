@@ -17,6 +17,7 @@ class StreamTwitter
   class HupException < Exception; end;
 
   def start_http_request
+    $logger.info("StreamTwitter starting")
     # HttpLogger.colorize = true
     # HttpLogger.level = :debug
 
@@ -46,6 +47,8 @@ class StreamTwitter
           parse_chunk(chunk)
 
           if Thread.current[:hup] == true || Thread.current[:quit] == true
+            $logger.info("StreamTwitter hupping") if Thread.current[:hup] == true
+            $logger.info("StreamTwitter quitting") if Thread.current[:quit] == true
             @current_tweet = nil
             raise HupException.new
           end
