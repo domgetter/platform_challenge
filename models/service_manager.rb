@@ -1,6 +1,4 @@
 # encoding: utf-8
-require "thwait"
-
 class ServiceManager
   def initialize(hashtag_data)
     @threads = []
