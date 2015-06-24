@@ -1,12 +1,13 @@
 # encoding: utf-8
 require "json"
+require 'pry'
 
 class StreamTwitter
   TWITTER_STREAM_URI = "https://stream.twitter.com/1.1/statuses/sample.json"
 
   def initialize(hashtag_data)
     @hashtag_data = hashtag_data
-    @current_tweet = nil
+    @buffer = ""
 
     self.consumer_key        = ENV["TWITTER_CONSUMER_KEY"]
     self.consumer_secret     = ENV["TWITTER_CONSUMER_SECRET"]
@@ -98,39 +99,17 @@ class StreamTwitter
   end
 
   def parse_chunk(chunk)
-    parts = chunk.split("\r\n")
-    # if we only have one in the stream
-    # that means that we don't have a full one yet
-    if parts.length == 1
-      # we don't have a full tweet so only start saving the tweet if it exists
-      if @current_tweet != nil
-        @current_tweet += parts[0]
+    if match_data = (@buffer + chunk).match(/(?<tweets>.*)\r\n(?<buffer>.+)/m)
+      # we can parse some json
+      # "{...}\r\n{...}\r\n{..}\r"
+      match_data[:tweets].split("\r\n").each do |tweet|
+        json_parse(tweet)
       end
-    # if we have two parts then we have a part of the previous tweet and part of the next tweet
-    # if we don't have a previous tweet then just throw away the
-    elsif parts.length == 2
-      if @current_tweet != nil
-        @current_tweet += parts[0]
-        json_parse(@current_tweet)
-        @current_tweet = parts[1]
-      else
-        @current_tweet = parts[1]
-      end
-    # if we have mulitple parts then start parsing them for each tweet
+      @buffer = match_data[:buffer]
     else
-      parts.each_with_index do |part, index|
-        if index == 0
-          if @current_tweet != nil
-            @current_tweet += part
-            json_parse(@current_tweet)
-          end
-        elsif index == parts.length - 1
-          @current_tweet = part
-        else
-          @current_tweet = part
-          json_parse(@current_tweet)
-        end
-      end
+      # we don't have enough stuff to even try to parse,
+      # so concat to the buffer, and wait til next chunk
+      @buffer += chunk
     end
   end
 
