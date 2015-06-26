@@ -44,19 +44,22 @@ class StreamTwitter
 
       http_object.request request do |response|
         response.read_body do |chunk|
-          parse_chunk(chunk)
-
-          if Thread.current[:hup] == true || Thread.current[:quit] == true
-            $logger.info("StreamTwitter hupping") if Thread.current[:hup] == true
-            $logger.info("StreamTwitter quitting") if Thread.current[:quit] == true
-            @current_tweet = nil
-            raise HupException.new
-          end
+          extract_tweets(chunk)
+          handle_interrupt
         end
       end
 
       http_object.finish
     rescue HupException
+    end
+  end
+
+  def handle_interrupt
+    if Thread.current[:hup] || Thread.current[:quit]
+      $logger.info("StreamTwitter hupping") if Thread.current[:hup]
+      $logger.info("StreamTwitter quitting") if Thread.current[:quit]
+      @buffer.clear
+      raise HupException.new
     end
   end
 
@@ -74,42 +77,31 @@ class StreamTwitter
   end
 
   def json_parse(data)
-    begin
-      parsed_data = JSON.parse(data)
-      if parsed_data["text"]
-        if parsed_data["entities"] && parsed_data["entities"]["hashtags"].any?
+    parsed_data = JSON.parse(data)
+    if parsed_data["text"]
+      if parsed_data["entities"] && parsed_data["entities"]["hashtags"].any?
 
-          # http://stackoverflow.com/questions/12102746/regex-to-match-hashtags-in-a-sentence-using-ruby
-          # this regex didn't work for non english languages
-          # was much easier to use the existing hashtags provided by the stream
-          # hashtags = parsed_data["text"].scan(/(?:\s|^)(?:#(?!(?:\d+|\w+?_|_\w+?)(?:\s|$)))(\w+)(?=\s|$)/i).flatten
+        # http://stackoverflow.com/questions/12102746/regex-to-match-hashtags-in-a-sentence-using-ruby
+        # this regex didn't work for non english languages
+        # was much easier to use the existing hashtags provided by the stream
+        # hashtags = parsed_data["text"].scan(/(?:\s|^)(?:#(?!(?:\d+|\w+?_|_\w+?)(?:\s|$)))(\w+)(?=\s|$)/i).flatten
 
-          parsed_data["entities"]["hashtags"].each do |hashtag|
-            if hashtag["text"]
-              $logger.debug(hashtag["text"])
-              @hashtag_data.add_hashtag(hashtag["text"])
-            end
+        parsed_data["entities"]["hashtags"].each do |hashtag|
+          if hashtag["text"]
+            $logger.debug(hashtag["text"])
+            @hashtag_data.add_hashtag(hashtag["text"])
           end
         end
       end
-    rescue JSON::ParserError => e
-      $logger.debug(e.inspect)
     end
+  rescue JSON::ParserError => e
+    $logger.debug(e.inspect)
   end
 
-  def parse_chunk(chunk)
-    if match_data = (@buffer + chunk).match(/(?<tweets>.*)\r\n(?<buffer>.+)/m)
-      # we can parse some json
-      # "{...}\r\n{...}\r\n{..}\r"
-      match_data[:tweets].split("\r\n").each do |tweet|
-        json_parse(tweet)
-      end
-      @buffer = match_data[:buffer]
-    else
-      # we don't have enough stuff to even try to parse,
-      # so concat to the buffer, and wait til next chunk
-      @buffer += chunk
-    end
+  def extract_tweets(chunk)
+    subchunks = (@buffer + chunk).split("\r\n", -1)
+    @buffer = subchunks.last.to_s
+    subchunks[0..-2].each { |tweet| json_parse(tweet) }
   end
 
   private

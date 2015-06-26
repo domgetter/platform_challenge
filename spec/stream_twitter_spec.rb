@@ -3,13 +3,26 @@ require_relative "../models/stream_twitter"
 require_relative "../models/hashtag_data"
 
 RSpec.describe StreamTwitter do
-  describe "#parse_chunk" do
+  describe "#extract_tweets" do
     it "does not try to parse chunk if it doesn't have a delimiter" do
       hashtag_data = HashtagData.new
       stream_twitter = StreamTwitter.new(hashtag_data)
       expect(stream_twitter).to receive(:json_parse).never
 
-      stream_twitter.parse_chunk("123")
+      stream_twitter.extract_tweets("{\"123")
+    end
+
+    it "handles an empty chunk" do
+      hashtag_data = HashtagData.new
+      stream_twitter = StreamTwitter.new(hashtag_data)
+
+      expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").twice
+
+      stream_twitter.extract_tweets("")
+      stream_twitter.extract_tweets("{\"123\"")
+      stream_twitter.extract_tweets(":\"456\"}\r\n{\"123\"")
+      stream_twitter.extract_tweets(":\"456\"}\r\n{\"123\"")
+
     end
 
     it "calls json_parse twice if the chunk has two parts" do
@@ -18,9 +31,10 @@ RSpec.describe StreamTwitter do
 
       expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").twice
 
-      stream_twitter.parse_chunk("{\"123\"")
-      stream_twitter.parse_chunk(":\"456\"}\r\n{\"123\"")
-      stream_twitter.parse_chunk(":\"456\"}\r\n{\"123\"")
+      stream_twitter.extract_tweets("")
+      stream_twitter.extract_tweets("{\"123\"")
+      stream_twitter.extract_tweets(":\"456\"}\r\n{\"123\"")
+      stream_twitter.extract_tweets(":\"456\"}\r\n{\"123\"")
 
     end
 
@@ -30,9 +44,33 @@ RSpec.describe StreamTwitter do
 
       expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").twice
 
-      stream_twitter.parse_chunk("{\"123\":\"456\"}\r")
-      stream_twitter.parse_chunk("\n{\"123\"")
-      stream_twitter.parse_chunk(":\"456\"}\r\n{\"123\"")
+      stream_twitter.extract_tweets("{\"123\":\"456\"}\r")
+      stream_twitter.extract_tweets("\n{\"123\"")
+      stream_twitter.extract_tweets(":\"456\"}\r\n{\"123\"")
+
+    end
+
+    it "calls json_parse twice if the chunk has two parts and \\r\\n starts a chunk" do
+      hashtag_data = HashtagData.new
+      stream_twitter = StreamTwitter.new(hashtag_data)
+
+      expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").twice
+
+      stream_twitter.extract_tweets("{\"123\":\"456\"}")
+      stream_twitter.extract_tweets("\r\n{\"123\"")
+      stream_twitter.extract_tweets(":\"456\"}\r\n{\"123\"")
+
+    end
+
+    it "calls json_parse twice if the chunk has two parts and \\r\\n ends a chunk" do
+      hashtag_data = HashtagData.new
+      stream_twitter = StreamTwitter.new(hashtag_data)
+
+      expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").twice
+
+      stream_twitter.extract_tweets("{\"123\":\"456\"}\r\n")
+      stream_twitter.extract_tweets("{\"123\"")
+      stream_twitter.extract_tweets(":\"456\"}\r\n{\"123\"")
 
     end
 
@@ -41,7 +79,7 @@ RSpec.describe StreamTwitter do
       stream_twitter = StreamTwitter.new(hashtag_data)
 
       expect(stream_twitter).to receive(:json_parse).with("{\"123\":\"456\"}").exactly(3).times
-      stream_twitter.parse_chunk("{\"123\":\"456\"}\r\n{\"123\":\"456\"}\r\n{\"123\":\"456\"}\r\n{\"123\"")
+      stream_twitter.extract_tweets("{\"123\":\"456\"}\r\n{\"123\":\"456\"}\r\n{\"123\":\"456\"}\r\n{\"123\"")
     end
   end
 
